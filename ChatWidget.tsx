@@ -45,7 +45,6 @@ const ChatWidget: React.FC<Props> = ({ student }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Reset chat when student changes
   useEffect(() => {
     setMessages([]);
     chatSessionRef.current = null;
@@ -55,36 +54,30 @@ const ChatWidget: React.FC<Props> = ({ student }) => {
   }, [student.id]);
 
   const initChat = () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      setMessages([{
+        role: 'model',
+        text: 'క్షమించండి, AI అసిస్టెంట్ పని చేయడానికి API కీ అవసరం. దయచేసి సెట్టింగ్స్ తనిఖీ చేయండి.'
+      }]);
+      return;
+    }
+
     if (chatSessionRef.current) return;
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const studentData = `
-      Name: ${student.name}
-      Section: ${student.section}
-      FA1 Total: ${student.fa1.total} (Rank: ${student.fa1.rank})
-      FA2 Total: ${student.fa2.total} (Rank: ${student.fa2.rank})
-      SA1 Total: ${student.sa1.total} (Rank: ${student.sa1.rank})
-      Attendance: ${student.attendance.totalAttendedDaysUntilNov}/120 days.
-    `;
+    const ai = new GoogleGenAI({ apiKey });
+    const studentData = `Name: ${student.name}, FA1: ${student.fa1.total}, FA2: ${student.fa2.total}, SA1: ${student.sa1.total}.`;
 
     chatSessionRef.current = ai.chats.create({
-      model: 'gemini-flash-latest',
+      model: 'gemini-3-flash-preview',
       config: {
-        systemInstruction: `You are the S.P.P.Z.P.P. School Digital Mentor. 
-        CONTEXT: ${studentData}
-        RULES:
-        1. Speak ONLY in TELUGU.
-        2. Be encouraging, empathetic, and professional.
-        3. Give detailed study plans based on the marks provided.
-        4. If attendance is low, warn the parents gently.
-        5. Mention the March 16th Public Exams as a key milestone.
-        6. Keep responses formatted with bullet points for readability.`,
+        systemInstruction: `You are the S.P.P.Z.P.P. School Digital Mentor. Context: ${studentData}. Speak ONLY in TELUGU.`,
       }
     });
 
     setMessages([{
       role: 'model',
-      text: `నమస్కారం! నేను ${student.name} గారి విద్యా సహాయకుడిని. మార్కుల విశ్లేషణ లేదా చదువులో మెరుగుదల గురించి మీకు ఏవైనా సందేహాలు ఉంటే ఇక్కడ అడగండి.`
+      text: `నమస్కారం! నేను ${student.name} గారి విద్యా సహాయకుడిని. మీకు ఏవైనా సందేహాలు ఉంటే అడగండి.`
     }]);
   };
 
@@ -93,6 +86,11 @@ const ChatWidget: React.FC<Props> = ({ student }) => {
     const textToSend = customText || input;
     if (!textToSend.trim() || isLoading) return;
 
+    if (!process.env.API_KEY) {
+      alert("API Key missing!");
+      return;
+    }
+
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: textToSend }]);
     setIsLoading(true);
@@ -100,13 +98,12 @@ const ChatWidget: React.FC<Props> = ({ student }) => {
     try {
       if (!chatSessionRef.current) initChat();
 
-      const stream = await chatSessionRef.current.sendMessageStream({ message: textToSend });
+      const responseStream = await chatSessionRef.current.sendMessageStream({ message: textToSend });
       
-      // Add empty message for streaming
       setMessages(prev => [...prev, { role: 'model', text: '' }]);
       
       let fullResponse = '';
-      for await (const chunk of stream) {
+      for await (const chunk of responseStream) {
         const c = chunk as GenerateContentResponse;
         if (c.text) {
           fullResponse += c.text;
@@ -119,121 +116,66 @@ const ChatWidget: React.FC<Props> = ({ student }) => {
       }
     } catch (err) {
       console.error('Chat error:', err);
-      setMessages(prev => [...prev, { role: 'model', text: 'క్షమించండి, సర్వర్ సమస్య వల్ల సమాధానం ఇవ్వలేకపోతున్నాను.' }]);
+      setMessages(prev => [...prev, { role: 'model', text: 'క్షమించండి, సాంకేతిక సమస్య ఎదురైంది.' }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const toggleChat = () => {
-    if (!isOpen) initChat();
     setIsOpen(!isOpen);
+    if (!isOpen) initChat();
   };
 
   return (
     <div className="fixed bottom-6 right-6 z-[100] no-print">
-      {/* Launcher Bubble */}
       {!isOpen && (
         <button
           onClick={toggleChat}
-          className="group relative flex items-center justify-center w-16 h-16 bg-blue-600 text-white rounded-full shadow-[0_8px_30px_rgb(37,99,235,0.4)] hover:bg-blue-700 hover:scale-110 transition-all duration-300"
+          className="group relative flex items-center justify-center w-16 h-16 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 hover:scale-110 transition-all duration-300"
         >
-          <div className="absolute -top-1 -right-1 flex h-5 w-5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 border-2 border-white text-[10px] font-bold flex items-center justify-center">1</span>
-          </div>
-          <MessageSquare className="w-8 h-8 group-hover:rotate-12 transition-transform" />
-          
-          {/* Tooltip */}
-          <div className="absolute right-20 bg-slate-900 text-white text-xs font-black py-2 px-4 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl border border-slate-700">
-            Ask AI Assistant (Telugu)
-          </div>
+          <MessageSquare className="w-8 h-8" />
         </button>
       )}
 
-      {/* Chat Window */}
       {isOpen && (
-        <div className="w-[90vw] sm:w-[420px] h-[600px] max-h-[80vh] bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-300">
-          {/* Header */}
-          <div className="p-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2">
-                  Interactive AI
-                  <div className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse" />
-                </h3>
-                <p className="text-[10px] text-blue-400 font-bold uppercase tracking-tighter">Live Support • {student.name}</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setIsOpen(false)}
-              className="p-2 hover:bg-white/10 rounded-xl transition-colors"
-            >
-              <ChevronDown className="w-5 h-5" />
-            </button>
+        <div className="w-[90vw] sm:w-[420px] h-[600px] max-h-[80vh] bg-white rounded-[2rem] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+          <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+            <h3 className="text-sm font-black uppercase tracking-widest">Interactive AI</h3>
+            <button onClick={() => setIsOpen(false)}><ChevronDown /></button>
           </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/50 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50">
             {messages.map((msg, i) => (
               <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed font-telugu shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-blue-600 text-white rounded-tr-none' 
-                    : 'bg-white text-slate-800 border border-slate-100 rounded-tl-none'
+                <div className={`p-4 rounded-2xl text-sm font-telugu ${
+                  msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800'
                 }`}>
-                  {msg.text || <Loader2 className="w-4 h-4 animate-spin opacity-40" />}
+                  {msg.text || <Loader2 className="animate-spin" />}
                 </div>
-                <span className="text-[8px] mt-1 text-slate-400 font-black uppercase tracking-widest">
-                  {msg.role === 'user' ? 'You' : 'Mentor AI'}
-                </span>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
-
-          {/* Footer */}
-          <div className="p-4 bg-white border-t border-slate-100 space-y-4 shrink-0">
-            {/* Quick Chips */}
-            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <div className="p-4 bg-white border-t space-y-4">
+             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               {QUICK_QUESTIONS.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSend(undefined, q)}
-                  disabled={isLoading}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 rounded-full text-[10px] font-bold transition-all whitespace-nowrap border border-slate-200 active:scale-95 disabled:opacity-50"
-                >
+                <button key={i} onClick={() => handleSend(undefined, q)} className="px-3 py-1.5 bg-slate-100 rounded-full text-[10px] font-bold whitespace-nowrap">
                   {q}
                 </button>
               ))}
             </div>
-
-            {/* Input */}
             <form onSubmit={handleSend} className="relative">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="ప్రశ్న అడగండి..."
-                className="w-full bg-slate-100 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 text-sm font-telugu focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all focus:bg-white"
+                className="w-full bg-slate-100 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 text-sm font-telugu"
               />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2.5 rounded-xl transition-all shadow-md active:scale-90 ${
-                  input.trim() && !isLoading ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400'
-                }`}
-              >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-xl">
+                <Send className="w-5 h-5" />
               </button>
             </form>
-            
-            <div className="flex items-center justify-center gap-1.5 text-[8px] text-slate-300 font-black uppercase tracking-[0.2em] pt-1">
-               <Zap className="w-2.5 h-2.5 fill-current" /> Gemini Live Contextual Engine
-            </div>
           </div>
         </div>
       )}

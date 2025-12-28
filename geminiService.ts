@@ -3,7 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Student, AIAnalysis, ExamResult } from "./types";
 
 export const analyzePerformance = async (student: Student): Promise<AIAnalysis> => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+;
   
   if (!apiKey) {
     console.warn("API_KEY is missing. Using fallback analysis.");

@@ -1,0 +1,7 @@
+{
+  "name": "S.P.P.Z.P.P. Digital Progress Card",
+  "description": "Comprehensive AI-powered student progress report card system for S.P.P.Z.P.P. High School with interactive exam analysis and attendance tracking.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
